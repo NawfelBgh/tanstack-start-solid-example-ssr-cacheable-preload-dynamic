@@ -1,5 +1,8 @@
 import { queryOptions } from '@tanstack/solid-query'
+import { createServerFn } from '@tanstack/solid-start'
 import { AnyRouteMatch } from '@tanstack/solid-router'
+import { getCookie } from '@tanstack/solid-start/server'
+import { serialize } from './serializeServerFnPayload'
 
 export type UserType = {
   id: number
@@ -7,12 +10,33 @@ export type UserType = {
   profilePic: string
 }
 
-// Fetch options and <link rel=preload> configuration must match to reuse preloaded data
-const fetchOptions = { credentials: 'include', mode: 'no-cors' } as const;
+export const fetchUser = createServerFn()
+  .handler(async ({ data }) => {
+    // Get user info from session
+    const session = getCookie('session');
+    console.info('Fetching user information');
+    
+    // Make the response extra slow for testing
+    await new Promise(resolve => setTimeout(resolve, 2_000));
+    return {
+        id: 1,
+        name: 'UserName',
+        profilePic: 'https://www.loremfaces.net/24/id/1.jpg'
+    } as UserType;
+  });
 
-function getUserApiRoutePath() {
-  return '/api/user';
-}
+export const fetchUserLike = createServerFn()
+  .inputValidator((postId: number) => postId)
+  .handler(async ({ data: postId}) => {
+    // Get user info from session
+    const session = getCookie('session');
+    // Check the database
+    console.info(`Checking if user liked post id ${postId}...`)
+
+    // Make the response extra slow for testing
+    await new Promise(resolve => setTimeout(resolve, 2_000));
+    return true;
+  });
 
 export const userQueryOptions = () => queryOptions({
   queryKey: ['user'],
@@ -20,21 +44,18 @@ export const userQueryOptions = () => queryOptions({
     // Add a timeout to simulated delayed script execution, to make the effect of <link rel="preload"> more apparent
     // await new Promise(resolve => setTimeout(resolve, 1_000));
     
-    return fetch(getUserApiRoutePath(), fetchOptions).then(response => response.json() as Promise<UserType>);
+    return fetchUser();
   },
 });
 
 export const userQueryPreloadLinks = (): AnyRouteMatch['links'] => [
   {
     rel: 'preload',
-    href: getUserApiRoutePath(),
+    // In this simple case, fetchUser.url is sufficient
+    href: fetchUser.url,
     as: 'fetch',
   },
 ];
-
-function getUserLikeApiRoutePath(postId: string) {
-  return `/api/post/${postId}/like`;
-}
 
 export const userLikeQueryOptions = (postId: string) => queryOptions({
   queryKey: ['userLike', postId],
@@ -42,14 +63,15 @@ export const userLikeQueryOptions = (postId: string) => queryOptions({
     // Add a timeout to simulated delayed script execution, to make the effect of <link rel="preload"> more apparent
     // await new Promise(resolve => setTimeout(resolve, 1_000));
     
-    return fetch(getUserLikeApiRoutePath(postId), fetchOptions).then(response => response.json() as Promise<boolean>);
+    return fetchUserLike({ data: +postId });
   },
 });
 
 export const userLikeQueryPreloadLinks = async (postId: string): Promise<AnyRouteMatch['links']> => [
   {
     rel: 'preload',
-    href: getUserLikeApiRoutePath(postId),
+    // FIXME: We need an official helper function to get server function's URL for given parameters
+    href: fetchUserLike.url + '?payload=' + encodeURIComponent(await serialize({ data: +postId })),
     as: 'fetch',
   },
 ];
